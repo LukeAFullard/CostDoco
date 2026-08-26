@@ -1,7 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
-import { buildBackupZip, importBackupZip, parseManifest } from './backup';
+import {
+  buildBackupZip,
+  importBackupZip,
+  parseManifest,
+  buildBackupFile,
+  importBackupFile,
+  EncryptedBackupRequiresPassphraseError,
+  IncorrectBackupPassphraseError,
+} from './backup';
 import { closeDB, getCostCodes, getGroups, getReceipts, putBlob, putCostCode, putGroup, putReceipt, putSettings } from '../db';
+import { enableEncryption } from '../security/migration';
+import { setEncryptionRequired, setSessionKey } from '../security/session';
 import type { CostCode, Group, Receipt } from '../types';
 import { unzipSync, strFromU8, strToU8, zipSync } from 'fflate';
 
@@ -28,6 +38,8 @@ vi.mock('../db', async () => {
 beforeEach(async () => {
   await closeDB();
   indexedDB = new IDBFactory();
+  setSessionKey(null);
+  setEncryptionRequired(false);
 });
 
 const now = new Date().toISOString();
@@ -176,6 +188,7 @@ describe('importBackupZip', () => {
       theme: 'light',
       lastBackupAt: null,
       backupReminderDays: 30,
+      encryptionEnabled: false,
     });
 
     const blobId = await putTestBlob('x');
@@ -194,6 +207,7 @@ describe('importBackupZip', () => {
       theme: 'light',
       lastBackupAt: null,
       backupReminderDays: 30,
+      encryptionEnabled: false,
     });
     const zipBlob = await buildBackupZip();
 
@@ -207,6 +221,7 @@ describe('importBackupZip', () => {
       theme: 'light',
       lastBackupAt: null,
       backupReminderDays: 30,
+      encryptionEnabled: false,
     });
 
     await importBackupZip(zipToFile(zipBlob));
@@ -260,3 +275,63 @@ describe('parseManifest', () => {
     expect(() => parseManifest(JSON.stringify({ schemaVersion: 1 }))).toThrow(/does not look like/i);
   });
 });
+
+describe('buildBackupFile / importBackupFile', () => {
+  it('produces a plain zip (unchanged from buildBackupZip) when encryption is off', async () => {
+    await putReceipt(makeReceipt());
+    const settings = { ...(await getSettingsFromDb()), encryptionEnabled: false };
+    const file = await buildBackupFile(settings);
+    const unzipped = unzipSync(new Uint8Array(await file.arrayBuffer()));
+    expect(unzipped['manifest.json']).toBeDefined();
+    expect(unzipped['backup-header.json']).toBeUndefined();
+  });
+
+  it('wraps the backup in an encrypted outer archive when encryption is on, and restores it with the right passphrase', async () => {
+    await putReceipt(makeReceipt({ vendor: 'Encrypted Vendor' }));
+    await enableEncryption('the passphrase', await getSettingsFromDb());
+    const settings = await getSettingsFromDb();
+
+    const file = await buildBackupFile(settings);
+    const outer = unzipSync(new Uint8Array(await file.arrayBuffer()));
+    expect(outer['backup-header.json']).toBeDefined();
+    expect(outer['payload.enc']).toBeDefined();
+    // The manifest/vendor text must not appear anywhere in the encrypted archive.
+    expect(new TextDecoder().decode(outer['payload.enc'])).not.toContain('Encrypted Vendor');
+
+    // Restore into a clean install using the same passphrase.
+    await closeDB();
+    indexedDB = new IDBFactory();
+    const result = await importBackupFile(zipToFile(file), 'the passphrase');
+    expect(result.receiptsImported).toBe(1);
+    const [imported] = await getReceipts();
+    expect(imported.vendor).toBe('Encrypted Vendor');
+  });
+
+  it('requires a passphrase to restore an encrypted backup, and rejects the wrong one', async () => {
+    await putReceipt(makeReceipt());
+    await enableEncryption('correct passphrase', await getSettingsFromDb());
+    const file = await buildBackupFile(await getSettingsFromDb());
+
+    await expect(importBackupFile(zipToFile(file))).rejects.toThrow(EncryptedBackupRequiresPassphraseError);
+    await expect(importBackupFile(zipToFile(file), 'wrong passphrase')).rejects.toThrow(IncorrectBackupPassphraseError);
+  });
+
+  it('still imports a plain (unencrypted) backup onto a different device that already has encryption enabled', async () => {
+    // Build a plain backup on the "original" device.
+    await putReceipt(makeReceipt({ vendor: 'Plain Vendor' }));
+    const plainFile = await buildBackupFile(await getSettingsFromDb());
+
+    // Restoring onto a fresh device that already turned encryption on locally.
+    await closeDB();
+    indexedDB = new IDBFactory();
+    await enableEncryption('local passphrase', await getSettingsFromDb());
+
+    const result = await importBackupFile(zipToFile(plainFile));
+    expect(result.receiptsImported).toBe(1);
+  });
+});
+
+async function getSettingsFromDb() {
+  const { getSettings } = await import('../db');
+  return getSettings();
+}
