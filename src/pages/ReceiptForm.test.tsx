@@ -4,8 +4,8 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { IDBFactory } from 'fake-indexeddb';
 import { ReceiptForm } from './ReceiptForm';
 import { AppDataProvider } from '../context/AppDataContext';
-import { closeDB, getReceipt, putReceipt } from '../db';
-import type { Receipt } from '../types';
+import { closeDB, getReceipt, putCostCode, putReceipt } from '../db';
+import type { CostCode, Receipt } from '../types';
 
 beforeEach(async () => {
   await closeDB();
@@ -119,6 +119,37 @@ describe('ReceiptForm', () => {
       const saved = await getReceipt(receipt.id);
       expect(Object.values(saved?.customFields ?? {})).toContain('GST-123');
     });
+  });
+
+  it('suggests a cost code from a past receipt with a closely-matching vendor, applied only on click', async () => {
+    const code: CostCode = { id: 'code1', name: 'Travel', groupId: null, archived: false, updatedAt: new Date().toISOString() };
+    await putCostCode(code);
+    await putReceipt(makeReceipt({ vendor: 'Acme Taxi', codeId: 'code1' }));
+    const receipt = makeReceipt();
+    await putReceipt(receipt);
+    renderForm(receipt.id);
+
+    const vendorInput = await screen.findByLabelText('Vendor');
+    fireEvent.change(vendorInput, { target: { value: 'Acme Taxi' } });
+
+    expect(await screen.findByText(/used cost code/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Cost Code')).toHaveValue('');
+
+    fireEvent.click(screen.getByText('Use this code'));
+    expect(screen.getByLabelText('Cost Code')).toHaveValue('code1');
+    expect(screen.queryByText(/used cost code/i)).not.toBeInTheDocument();
+  });
+
+  it('does not suggest a code once the receipt already has one', async () => {
+    const code: CostCode = { id: 'code1', name: 'Travel', groupId: null, archived: false, updatedAt: new Date().toISOString() };
+    await putCostCode(code);
+    await putReceipt(makeReceipt({ vendor: 'Acme Taxi', codeId: 'code1' }));
+    const receipt = makeReceipt({ vendor: 'Acme Taxi', codeId: 'code1' });
+    await putReceipt(receipt);
+    renderForm(receipt.id);
+
+    await screen.findByLabelText('Vendor');
+    expect(screen.queryByText(/used cost code/i)).not.toBeInTheDocument();
   });
 
   it('deletes the receipt', async () => {

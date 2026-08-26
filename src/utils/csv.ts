@@ -1,14 +1,6 @@
 import type { CostCode, CustomFieldDefinition, Group, Receipt } from '../types';
 import { taxAmount } from '../types';
-
-function escapeCSV(value: string): string {
-  if (/[",\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
-
-const num = (n: number | undefined) => (n == null ? '' : n.toFixed(2));
+import { escapeCSV, formatNum as num, groupNameOf, codeNameOf } from './csvFormat';
 
 /**
  * One row per line item (a header-mode receipt exports 1 row; an itemized one
@@ -22,9 +14,6 @@ export function buildReceiptsCsv(
   costCodes: CostCode[],
   customFieldDefinitions: CustomFieldDefinition[]
 ): string {
-  const groupName = (id?: string) => (id ? groups.find((g) => g.id === id)?.name ?? '' : 'Uncategorized');
-  const codeName = (id?: string) => (id ? costCodes.find((c) => c.id === id)?.name ?? '' : '');
-
   const headers = [
     'receiptId',
     'date',
@@ -55,8 +44,8 @@ export function buildReceiptsCsv(
         num(item.amountIncTax),
         receipt.currency,
         num(receipt.convertedAmount),
-        groupName(receipt.groupId),
-        codeName(receipt.codeId),
+        groupNameOf(groups, receipt.groupId),
+        codeNameOf(costCodes, receipt.codeId),
         receipt.receiptNumber ?? '',
         ...customFieldDefinitions.map((d) => receipt.customFields?.[d.id] ?? ''),
       ];

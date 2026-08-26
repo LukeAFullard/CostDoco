@@ -7,6 +7,7 @@ import { Input } from '../components/ui/Input';
 import { useAppData } from '../context/AppDataContext';
 import { getBlob } from '../db';
 import { findLikelyDuplicate } from '../utils/duplicateDetection';
+import { suggestCodeForVendor } from '../utils/vendorMemory';
 import { receiptTotalIncTax } from '../types';
 import type { LineItem, Receipt, TaxMode } from '../types';
 
@@ -45,6 +46,21 @@ export const ReceiptForm: React.FC = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt?.id]);
+
+  // Vendor memory (PROJECT_PLAN.md §7 candidate 2) candidate list: past
+  // receipts coded with a cost code that's selectable in this receipt's
+  // current group. Memoized separately from the vendor-matching step below so
+  // typing in the Vendor field doesn't re-filter the full receipt history on
+  // every keystroke — only the (usually much smaller) candidate list is
+  // re-scanned as the user types.
+  const codeSuggestionCandidates = useMemo(() => {
+    if (!receipt) return [];
+    const allowedIds = new Set(
+      costCodes.filter((c) => !c.archived && (!receipt.groupId || c.groupId === receipt.groupId || !c.groupId)).map((c) => c.id)
+    );
+    return receipts.filter((r) => r.id !== receipt.id && r.codeId && allowedIds.has(r.codeId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receipts, costCodes, receipt?.groupId, receipt?.id]);
 
   if (!receipt) {
     return (
@@ -110,6 +126,15 @@ export const ReceiptForm: React.FC = () => {
     { date: receipt.date, vendor: receipt.vendor, totalIncTax: receiptTotalIncTax(receipt), pdfHash: receipt.pdfHash },
     receipts.filter((r) => r.id !== receipt.id)
   );
+
+  // Vendor memory (PROJECT_PLAN.md §7 candidate 2): suggest, never auto-apply,
+  // a cost code based on how past receipts from a closely-matching vendor
+  // were coded. Only offered while the receipt has no code yet, and only
+  // among codes selectable in the current group (so applying it is always
+  // valid in the dropdown above).
+  const vendorCodeSuggestion =
+    !receipt.codeId && receipt.vendor?.trim() ? suggestCodeForVendor(receipt.vendor, codeSuggestionCandidates) : undefined;
+  const suggestedCodeName = vendorCodeSuggestion ? costCodes.find((c) => c.id === vendorCodeSuggestion.codeId)?.name : undefined;
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
@@ -332,6 +357,22 @@ export const ReceiptForm: React.FC = () => {
           </Button>
         </div>
       </Panel>
+
+      {vendorCodeSuggestion && suggestedCodeName && (
+        <Panel className="p-4 border-verdigris bg-verdigris/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <p className="text-sm text-graphite dark:text-stone">
+            Past receipts from <strong>{vendorCodeSuggestion.matchedVendor}</strong> used cost code{' '}
+            <strong>{suggestedCodeName}</strong>.
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => update({ codeId: vendorCodeSuggestion.codeId })}
+          >
+            Use this code
+          </Button>
+        </Panel>
+      )}
 
       {likelyDuplicate && (
         <Panel className="p-4 border-signal bg-signal/10 text-sm text-graphite dark:text-stone">

@@ -114,4 +114,18 @@ describe('Reports', () => {
     await waitFor(() => expect(clickSpy).toHaveBeenCalled());
     clickSpy.mockRestore();
   });
+
+  it('lets the user pick a named CSV export template', async () => {
+    await putReceipt(makeReceipt());
+    renderPage();
+    await screen.findByText(/1 receipt\b/);
+
+    fireEvent.change(screen.getByLabelText('CSV format'), { target: { value: 'xero-bills' } });
+    expect(screen.getByText(/Matches Xero's Bills CSV import layout/)).toBeInTheDocument();
+
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    fireEvent.click(screen.getByText('Export CSV'));
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+    clickSpy.mockRestore();
+  });
 });
