@@ -11,12 +11,13 @@
 
 2. **CSV export**
    - One row per line item (a header-mode receipt exports 1 row; an itemized one exports N), with a shared `receiptId` column so rows can be regrouped.
-   - Columns: date, vendor, description, amount ex tax, tax amount (derived), amount inc tax, currency, group, code, receipt number.
-   - Confirm target accounting-import format (Xero/QuickBooks/generic) before finalizing headers — open question in `PROJECT_PLAN.md` §8.7.
+   - Columns: date, vendor, description, amount ex tax, tax amount (derived), amount inc tax, currency, converted amount (home currency, blank if not entered), group, code, receipt number, one column per defined custom field.
+   - Generic format for v1 (confirmed, `PROJECT_PLAN.md` §8.7) — named accounting-tool templates are a Phase 5 stretch candidate, not required here.
 
 3. **PDF summary report**
    - Reuse `jsPDF`, matching TimeDoco's existing export code/style.
    - Totals grouped by code/group, line-item detail table, optional appended receipt PDFs (user toggle).
+   - Currency-aware totals: sum `convertedAmount` (falling back to the raw total when `currency == homeCurrency`) for the main total. Receipts in a foreign currency with no `convertedAmount` entered are excluded from that total and listed separately as "not yet converted" — never silently mixed in.
 
 4. **Zip backup export**
    - Bundle every receipt's PDF plus a `manifest.json` (schema version, export timestamp, index of receipt metadata → PDF filename) using a lightweight zip library (e.g. `fflate`).

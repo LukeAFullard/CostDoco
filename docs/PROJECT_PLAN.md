@@ -62,8 +62,8 @@ Photo/PDF → OCR (via `liteparse-wasm` + `tesseract.js`) → extracted text ren
 ### 4.2 Compression with a trust-building preview
 Before committing, the user sees the actual compressed PDF at true size, auto-zoomed to the total and tax-number regions specifically, with 2–3 preset quality levels and file-size estimates. Only the compressed PDF and the extracted data are kept — the original photo/PDF is discarded after the user confirms it's legible.
 
-### 4.3 Doco Suite Bridge (Phase 4+)
-A `billable` flag on receipts lets them feed into NoteDoco's Project Close-Out Report alongside time and checklist data — a report only the suite, not any single app, can produce. Mechanism (same-origin vs. explicit export/import) is an open question shared with NoteDoco's own plan — see §8.6.
+### 4.3 Doco Suite Bridge (Phase 7)
+A `billable` flag on receipts lets them feed into NoteDoco's Project Close-Out Report alongside time and checklist data — a report only the suite, not any single app, can produce. Hosting is confirmed same-domain/same-origin (subpath, not subdomain — see §8.1), which makes a direct-access Bridge realistic, but the mechanism is deliberately unscoped until the rest of the app is stable — see §8.6 and Phase 7.
 
 ### 4.4 Local encryption at rest
 Receipts carry more sensitive data (partial card numbers, addresses) than notes or time entries. Optional passphrase-derived encryption (Web Crypto API — `PBKDF2` + `AES-GCM`, no new dependency) for the IndexedDB payload.
@@ -74,7 +74,7 @@ Receipts carry more sensitive data (partial card numbers, addresses) than notes 
 
 - **Stack:** React 19, TypeScript, Vite, Tailwind CSS — matching the rest of the suite.
 - **Storage:** IndexedDB via `idb`; request persistent storage (`navigator.storage.persist()`) on first run given heavier binary payloads than TimeDoco/NoteDoco.
-- **OCR/PDF pipeline:** `@llamaindex/liteparse-wasm`, pinned to a confirmed stable release ≥ `wasm-v2.8.1` (pure-Rust image→PDF, no ImageMagick dependency) — verify the current latest stable at implementation time. OCR recognition is supplied via a `tesseract.js`-backed callback; liteparse does not bundle OCR in the WASM build.
+- **OCR/PDF pipeline:** `@llamaindex/liteparse-wasm`, pinned to `wasm-v2.14.0` (confirmed current as of Aug 2026; pure-Rust image→PDF, no ImageMagick dependency; includes memory optimisation during rasterization/OCR and worker-pool support — re-verify at implementation time in case of newer stable releases). OCR recognition is supplied via a `tesseract.js`-backed callback; liteparse does not bundle OCR in the WASM build.
 - **Backup:** zip export, not JSON — binary PDFs don't belong base64-encoded in JSON. Bundle a `manifest.json` index inside the zip so the archive stays self-describing outside the app.
 - **PDF report generation:** reuse `jsPDF`, matching TimeDoco's existing export code.
 - **Testing:** Vitest + Testing Library + Oxlint, matching the suite's existing bar.
@@ -99,18 +99,22 @@ Receipts carry more sensitive data (partial card numbers, addresses) than notes 
 - [ ] **Phase 1 — Capture & manual entry MVP:** groups, cost codes, capture/crop, full manual entry, no OCR yet. → `docs/implementation/01-data-model-and-manual-entry.md`
 - [ ] **Phase 2 — OCR & compression:** liteparse/tesseract pipeline, correction UI, compression preview, duplicate detection. → `docs/implementation/02-ocr-compression-pipeline.md`
 - [ ] **Phase 3 — Reporting & backup:** CSV export, PDF summary report, zip backup/restore, persistent storage, backup reminders. → `docs/implementation/03-reporting-export-backup.md`
-- [ ] **Phase 4 — Security & Bridge:** encryption at rest, billable flag wiring, Doco Suite Bridge hand-off mechanism.
-- [ ] **Phase 5 — Stretch:** auto-crop/perspective correction, vendor memory, OCR-assisted line-item detection, multi-currency refinements.
+- [ ] **Phase 4 — Security:** encryption at rest, billable flag wiring. → `docs/implementation/04-security-and-bridge.md`
+- [ ] **Phase 5 — Stretch:** auto-crop/perspective correction, vendor memory, OCR-assisted line-item detection, named export templates. → `docs/implementation/05-stretch-enhancements.md`
+- [ ] **Phase 6 — Open questions resolved:** hosting model, currency handling, custom fields, categorisation defaults, version pin. → `docs/implementation/06-open-questions-resolved.md`
+- [ ] **Phase 7 — Suite Bridge:** deliberately deferred until Phases 0–6 are stable and same-domain hosting is confirmed in production. Not yet scoped.
 
 ---
 
-## 8. Open Questions
+## 8. Open Questions — Resolved
 
-1. **Name/domain:** confirm `costdoco.com` (or equivalent) is available; no trademark conflict identified but not exhaustively checked.
-2. **liteparse-wasm version:** pin the current latest stable ≥ `wasm-v2.8.1` at implementation time — verify via `npm view @llamaindex/liteparse-wasm versions`.
-3. **Receipt number vs. tax number:** one field or two? (Vendor invoice number vs. vendor's GST/VAT registration number serve different purposes.)
-4. **Currency:** reuse TimeDoco's rate/currency settings model, or standalone per-receipt currency?
-5. **Encryption UX:** if the passphrase is forgotten, is data permanently unrecoverable by design, or is there a recovery path that weakens the model? Needs an explicit decision, not a default.
-6. **Bridge mechanism:** same-origin hosting vs. explicit export/import hand-off — same open question NoteDoco's plan raised; needs resolving before Phase 4.
-7. **CSV export shape:** which accounting import format to target first (Xero, QuickBooks, generic)?
-8. **Mandatory categorisation:** can a receipt be saved with no group/code ("Uncategorised"), or is one required?
+Full detail and resulting action items in `docs/implementation/06-open-questions-resolved.md`. Summary:
+
+1. **Name/domain:** `timedoco.com/costs` — a subpath, same origin as TimeDoco (not a subdomain).
+2. **liteparse-wasm version:** pinned to `wasm-v2.14.0`.
+3. **Receipt number vs. tax number:** one built-in field (`receiptNumber`); additional fields (e.g. vendor tax number) via a user-defined custom-fields mechanism, matching TimeDoco's pattern.
+4. **Currency:** per-receipt transaction currency kept as-is; optional manually-entered `convertedAmount` in the user's home currency for consistent reporting. No live rate lookups.
+5. **Encryption UX:** not recoverable by design — the enable flow requires a typed confirmation, not just a checkbox.
+6. **Bridge mechanism:** same-origin hosting confirmed, but the Bridge itself is deliberately deferred to Phase 7, built last.
+7. **CSV export shape:** generic for v1; named accounting-tool templates are a Phase 5 stretch candidate.
+8. **Mandatory categorisation:** not required — "Uncategorized" is a UI-level bucket for receipts with no group, not a seeded database record.
