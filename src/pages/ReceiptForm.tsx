@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Trash2 } from 'lucide-react';
+import { FileText, Plus, Trash2 } from 'lucide-react';
 import { Panel } from '../components/ui/Panel';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useAppData } from '../context/AppDataContext';
 import { getBlob } from '../db';
+import { findLikelyDuplicate } from '../utils/duplicateDetection';
+import { receiptTotalIncTax } from '../types';
 import type { LineItem, Receipt, TaxMode } from '../types';
 
 function emptyLineItem(): LineItem {
@@ -19,7 +21,7 @@ export const ReceiptForm: React.FC = () => {
 
   const original = useMemo(() => receipts.find((r) => r.id === id), [receipts, id]);
   const [receipt, setReceipt] = useState<Receipt | null>(original ?? null);
-  const [pageUrls, setPageUrls] = useState<string[]>([]);
+  const [pages, setPages] = useState<{ url: string; mimeType: string }[]>([]);
   const [newFieldLabel, setNewFieldLabel] = useState('');
 
   useEffect(() => {
@@ -33,8 +35,9 @@ export const ReceiptForm: React.FC = () => {
       if (!receipt) return;
       const blobs = await Promise.all(receipt.pageBlobRefs.map((ref) => getBlob(ref)));
       if (cancelled) return;
-      urls = blobs.filter((b): b is NonNullable<typeof b> => !!b).map((b) => URL.createObjectURL(b.blob));
-      setPageUrls(urls);
+      const found = blobs.filter((b): b is NonNullable<typeof b> => !!b);
+      urls = found.map((b) => URL.createObjectURL(b.blob));
+      setPages(found.map((b, i) => ({ url: urls[i], mimeType: b.mimeType })));
     })();
     return () => {
       cancelled = true;
@@ -103,17 +106,35 @@ export const ReceiptForm: React.FC = () => {
   const availableCodes = costCodes.filter((c) => !c.archived && (!receipt.groupId || c.groupId === receipt.groupId || !c.groupId));
   const showConversion = settings && receipt.currency && receipt.currency !== settings.homeCurrency;
 
+  const likelyDuplicate = findLikelyDuplicate(
+    { date: receipt.date, vendor: receipt.vendor, totalIncTax: receiptTotalIncTax(receipt), pdfHash: receipt.pdfHash },
+    receipts.filter((r) => r.id !== receipt.id)
+  );
+
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
       <h1 className="text-xl font-bold text-graphite dark:text-stone">Receipt Details</h1>
 
-      {pageUrls.length > 0 && (
+      {pages.length > 0 && (
         <Panel className="p-4">
-          <h2 className="text-sm font-semibold text-graphite dark:text-stone mb-2">Captured Pages</h2>
+          <h2 className="text-sm font-semibold text-graphite dark:text-stone mb-2">Receipt Document</h2>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-            {pageUrls.map((url, i) => (
-              <img key={i} src={url} alt={`Receipt page ${i + 1}`} className="w-full h-24 object-cover rounded border border-graphite/20 dark:border-white/20" />
-            ))}
+            {pages.map((page, i) =>
+              page.mimeType === 'application/pdf' ? (
+                <a
+                  key={i}
+                  href={page.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full h-24 flex flex-col items-center justify-center gap-1 rounded border border-graphite/20 dark:border-white/20 bg-stone/50 dark:bg-ink/40 text-graphite dark:text-stone hover:bg-stone dark:hover:bg-ink"
+                >
+                  <FileText size={20} />
+                  <span className="text-xs">Open PDF</span>
+                </a>
+              ) : (
+                <img key={i} src={page.url} alt={`Receipt page ${i + 1}`} className="w-full h-24 object-cover rounded border border-graphite/20 dark:border-white/20" />
+              )
+            )}
           </div>
         </Panel>
       )}
@@ -311,6 +332,14 @@ export const ReceiptForm: React.FC = () => {
           </Button>
         </div>
       </Panel>
+
+      {likelyDuplicate && (
+        <Panel className="p-4 border-signal bg-signal/10 text-sm text-graphite dark:text-stone">
+          This looks like it might be a duplicate of a receipt already saved
+          {likelyDuplicate.vendor ? ` for ${likelyDuplicate.vendor}` : ''} on {likelyDuplicate.date}. You can still save —
+          this is just a heads-up.
+        </Panel>
+      )}
 
       <div className="flex justify-between">
         {original && (

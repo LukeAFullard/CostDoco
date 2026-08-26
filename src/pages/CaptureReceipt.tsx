@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2 } from 'lucide-react';
+import { FileText, Plus, Trash2 } from 'lucide-react';
 import { Panel } from '../components/ui/Panel';
 import { Button } from '../components/ui/Button';
 import { CaptureInput } from '../components/capture/CaptureInput';
@@ -14,6 +14,7 @@ interface CapturedPage {
   id: string;
   blob: Blob;
   previewUrl: string;
+  mimeType: string;
 }
 
 export const CaptureReceipt: React.FC = () => {
@@ -25,18 +26,32 @@ export const CaptureReceipt: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const hasPdfPage = pages.some((p) => p.mimeType === 'application/pdf');
+
   const handleFileSelected = async (file: File) => {
     setError(null);
+
+    if (file.type === 'application/pdf') {
+      if (pages.length > 0) {
+        setError('A receipt can only have one uploaded PDF, and it can’t be mixed with photos. Remove the existing page(s) first.');
+        return;
+      }
+      const previewUrl = URL.createObjectURL(file);
+      setPages([{ id: crypto.randomUUID(), blob: file, previewUrl, mimeType: 'application/pdf' }]);
+      return;
+    }
+
+    if (hasPdfPage) {
+      setError('This receipt already has an uploaded PDF page. Remove it first to add photos instead.');
+      return;
+    }
+
     try {
       const img = await fileToImage(file);
       setPendingImage(img);
       setPendingImageUrl(URL.createObjectURL(file));
     } catch {
-      setError(
-        file.type === 'application/pdf'
-          ? 'This build can’t crop a PDF directly yet — please upload a photo or scanned image instead.'
-          : 'Could not read that file as an image. Please try a different photo or file.'
-      );
+      setError('Could not read that file as an image. Please try a different photo or file.');
     }
   };
 
@@ -44,7 +59,7 @@ export const CaptureReceipt: React.FC = () => {
     if (!pendingImage) return;
     const blob = await cropImageToRect(pendingImage, corners);
     const previewUrl = URL.createObjectURL(blob);
-    setPages((prev) => [...prev, { id: crypto.randomUUID(), blob, previewUrl }]);
+    setPages((prev) => [...prev, { id: crypto.randomUUID(), blob, previewUrl, mimeType: blob.type || 'image/jpeg' }]);
     if (pendingImageUrl) URL.revokeObjectURL(pendingImageUrl);
     setPendingImage(null);
     setPendingImageUrl(null);
@@ -71,7 +86,7 @@ export const CaptureReceipt: React.FC = () => {
       const pageBlobRefs: string[] = [];
       for (const page of pages) {
         const id = crypto.randomUUID();
-        await putBlob({ id, blob: page.blob, mimeType: page.blob.type || 'image/jpeg', createdAt: new Date().toISOString() });
+        await putBlob({ id, blob: page.blob, mimeType: page.mimeType, createdAt: new Date().toISOString() });
         pageBlobRefs.push(id);
       }
 
@@ -83,14 +98,15 @@ export const CaptureReceipt: React.FC = () => {
         lineItems: [{ id: crypto.randomUUID() }],
         currency: settings?.homeCurrency ?? 'USD',
         billable: false,
-        // TODO(phase-2): replace with the merged, compressed PDF blob ref.
+        // Placeholder until the OCR/compression review step (OcrReview) replaces
+        // this with the real merged, compressed PDF blob ref.
         pdfBlobRef: pageBlobRefs[0],
         pageBlobRefs,
         createdAt: now,
         updatedAt: now,
       };
       await saveReceipt(receipt);
-      navigate(`/receipts/${receipt.id}`);
+      navigate(`/receipts/${receipt.id}/review`);
     } finally {
       setSaving(false);
     }
@@ -124,7 +140,14 @@ export const CaptureReceipt: React.FC = () => {
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
               {pages.map((page, i) => (
                 <div key={page.id} className="relative">
-                  <img src={page.previewUrl} alt={`Page ${i + 1}`} className="w-full h-24 object-cover rounded border border-graphite/20 dark:border-white/20" />
+                  {page.mimeType === 'application/pdf' ? (
+                    <div className="w-full h-24 flex flex-col items-center justify-center gap-1 rounded border border-graphite/20 dark:border-white/20 bg-stone/50 dark:bg-ink/40 text-graphite dark:text-stone">
+                      <FileText size={20} />
+                      <span className="text-xs">PDF</span>
+                    </div>
+                  ) : (
+                    <img src={page.previewUrl} alt={`Page ${i + 1}`} className="w-full h-24 object-cover rounded border border-graphite/20 dark:border-white/20" />
+                  )}
                   <button
                     type="button"
                     onClick={() => removePage(page.id)}
@@ -136,16 +159,18 @@ export const CaptureReceipt: React.FC = () => {
                 </div>
               ))}
             </div>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 flex items-center gap-1">
-              <Plus size={14} /> Use "Take Photo" or "Upload File" above to add another page.
-            </p>
+            {!hasPdfPage && (
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 flex items-center gap-1">
+                <Plus size={14} /> Use "Take Photo" or "Upload File" above to add another page.
+              </p>
+            )}
           </div>
         )}
       </Panel>
 
       <div className="flex justify-end">
         <Button variant="primary" size="lg" disabled={pages.length === 0 || saving} onClick={handleContinue}>
-          {saving ? 'Saving…' : 'Continue to Details'}
+          {saving ? 'Saving…' : 'Continue'}
         </Button>
       </div>
     </div>

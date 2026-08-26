@@ -39,13 +39,23 @@ export interface Receipt {
   currency: string; // transaction currency, as printed on the receipt
   convertedAmount?: number; // manual home-currency equivalent, optional
   billable: boolean; // for the future Doco Suite Bridge (Phase 7)
-  // Phase 1: raw cropped page bytes, stored directly as the placeholder document.
-  // Phase 2 replaces this with the real compressed PDF from the liteparse pipeline.
-  // TODO(phase-2): replace with the merged, compressed PDF blob ref.
+  // The merged, compressed PDF built from pageBlobRefs (or the uploaded PDF as-is
+  // when it already had a usable text layer). Falls back to the first raw page
+  // blob for a receipt saved before the OCR/compression pipeline ran on it.
   pdfBlobRef: string;
-  pageBlobRefs: string[]; // one entry per captured page, in order
+  pageBlobRefs: string[]; // one entry per captured/uploaded page, in order
+  ocrBoxes?: OcrBox[]; // OCR'd text + bounding boxes, kept for the correction UI
+  pdfHash?: string; // SHA-256 of the final PDF bytes, used for duplicate detection
   createdAt: string; // ISO datetime
   updatedAt: string; // ISO datetime
+}
+
+/** One OCR'd line of text and where it sits on its source page (see ocr/pipeline.ts). */
+export interface OcrBox {
+  page: number; // 0-indexed
+  text: string;
+  bbox: [number, number, number, number]; // [x1, y1, x2, y2] in the page's raster pixel space
+  confidence: number; // 0..1
 }
 
 export interface ReceiptBlob {

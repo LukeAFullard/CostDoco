@@ -13,15 +13,17 @@
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@llamaindex/liteparse-wasm": "^2.14.0",
     "date-fns": "^4.4.0",
     "fflate": "^0.8.3",
     "idb": "^8.0.3",
-    "jspdf": "^3.0.4",
+    "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.34.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.2"
+    "react-router-dom": "^7.18.2",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
