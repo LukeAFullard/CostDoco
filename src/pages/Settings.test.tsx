@@ -4,14 +4,21 @@ import { IDBFactory } from 'fake-indexeddb';
 import { Settings } from './Settings';
 import { AppDataProvider } from '../context/AppDataContext';
 import { closeDB, getSettings, putReceipt } from '../db';
+import { setSessionKey, setEncryptionRequired } from '../security/session';
 import type { Receipt } from '../types';
 
 beforeEach(async () => {
   await closeDB();
   indexedDB = new IDBFactory();
+  setSessionKey(null);
+  setEncryptionRequired(false);
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  setSessionKey(null);
+  setEncryptionRequired(false);
+});
 
 const renderPage = () =>
   render(
@@ -71,6 +78,18 @@ describe('Settings', () => {
     clickSpy.mockRestore();
   });
 
+  it('shows an error when exporting a backup fails because the session is locked', async () => {
+    const { enableEncryption } = await import('../security/migration');
+    await enableEncryption('pw', await getSettings());
+    const { lock } = await import('../security/session');
+    lock();
+
+    renderPage();
+    fireEvent.click(await screen.findByText('Export Zip Backup'));
+
+    expect(await screen.findByText(/costdoco is locked/i)).toBeInTheDocument();
+  });
+
   it('imports a zip backup and shows the result summary', async () => {
     const now = new Date().toISOString();
     const receipt: Receipt = {
@@ -98,6 +117,52 @@ describe('Settings', () => {
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File([zipBlob], 'backup.zip', { type: 'application/zip' });
     fireEvent.change(fileInput, { target: { files: [file] } });
+
+    expect(await screen.findByText(/imported 0 group\(s\), 0 cost code\(s\), and 1 receipt\(s\)/i)).toBeInTheDocument();
+  });
+
+  it('prompts for a passphrase when importing an encrypted backup, then imports it after retrying a wrong one', async () => {
+    const now = new Date().toISOString();
+    const receipt: Receipt = {
+      id: crypto.randomUUID(),
+      date: '2026-08-20',
+      taxMode: 'header',
+      lineItems: [{ id: crypto.randomUUID(), amountIncTax: 10 }],
+      currency: 'USD',
+      billable: false,
+      pdfBlobRef: 'unused',
+      pageBlobRefs: ['unused'],
+      createdAt: now,
+      updatedAt: now,
+    };
+    await putReceipt(receipt);
+
+    const { enableEncryption } = await import('../security/migration');
+    await enableEncryption('correct horse battery staple', await getSettings());
+    const { buildBackupFile } = await import('../utils/backup');
+    const encryptedZipBlob = await buildBackupFile(await getSettings());
+
+    const { lock } = await import('../security/session');
+    lock();
+    await closeDB();
+    indexedDB = new IDBFactory();
+
+    renderPage();
+    await screen.findByText('Never');
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File([encryptedZipBlob], 'backup.zip', { type: 'application/zip' });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    expect(await screen.findByText(/this backup file .* is encrypted/i)).toBeInTheDocument();
+
+    const passInput = screen.getByLabelText('Backup passphrase');
+    fireEvent.change(passInput, { target: { value: 'wrong passphrase' } });
+    fireEvent.click(screen.getByText('Import'));
+    expect(await screen.findByText(/incorrect passphrase for this backup/i)).toBeInTheDocument();
+
+    fireEvent.change(passInput, { target: { value: 'correct horse battery staple' } });
+    fireEvent.click(screen.getByText('Import'));
 
     expect(await screen.findByText(/imported 0 group\(s\), 0 cost code\(s\), and 1 receipt\(s\)/i)).toBeInTheDocument();
   });

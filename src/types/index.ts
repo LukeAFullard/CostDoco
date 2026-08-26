@@ -77,6 +77,13 @@ export interface Settings {
   theme: 'light' | 'dark' | 'system';
   lastBackupAt: string | null; // ISO datetime
   backupReminderDays: number;
+  // Encryption at rest (Phase 4) — off by default. Never store the passphrase
+  // or derived key here, only the parameters needed to re-derive the key and
+  // to verify a re-entered passphrase is correct.
+  encryptionEnabled: boolean;
+  encryptionSalt?: string; // base64
+  encryptionIterations?: number;
+  encryptionVerifier?: { iv: string; ciphertext: string };
 }
 
 /** Derives the tax amount at read time rather than storing it, to avoid rounding drift on edits. */

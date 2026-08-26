@@ -53,6 +53,7 @@ describe('BackupReminderBanner', () => {
       theme: 'light',
       lastBackupAt: new Date().toISOString(),
       backupReminderDays: 30,
+      encryptionEnabled: false,
     };
     await putSettings(settings);
     renderBanner();
@@ -69,6 +70,7 @@ describe('BackupReminderBanner', () => {
       theme: 'light',
       lastBackupAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
       backupReminderDays: 30,
+      encryptionEnabled: false,
     };
     await putSettings(settings);
     renderBanner();

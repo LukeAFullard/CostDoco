@@ -103,6 +103,7 @@ describe('db', () => {
       theme: 'dark',
       lastBackupAt: null,
       backupReminderDays: 30,
+      encryptionEnabled: false,
     };
     await putSettings(settings);
     expect(await getSettings()).toEqual(settings);

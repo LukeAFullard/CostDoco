@@ -4,8 +4,10 @@ import { Panel } from '../components/ui/Panel';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useAppData } from '../context/AppDataContext';
-import { buildBackupZip, importBackupZip, type ImportResult } from '../utils/backup';
+import { buildBackupFile, importBackupFile, EncryptedBackupRequiresPassphraseError, type ImportResult } from '../utils/backup';
 import { downloadBlob } from '../utils/download';
+import { EncryptionSettings } from '../components/EncryptionSettings';
+import { Modal } from '../components/ui/Modal';
 
 export const Settings: React.FC = () => {
   const { settings, updateSettings } = useAppData();
@@ -16,6 +18,9 @@ export const Settings: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
+  const [importPassphrase, setImportPassphrase] = useState('');
+  const [backupError, setBackupError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -27,30 +32,48 @@ export const Settings: React.FC = () => {
 
   const handleBackup = async () => {
     setBackingUp(true);
+    setBackupError(null);
     try {
-      const blob = await buildBackupZip();
+      const blob = await buildBackupFile(settings);
       downloadBlob(blob, `costdoco-backup-${new Date().toISOString().slice(0, 10)}.zip`);
       await updateSettings({ lastBackupAt: new Date().toISOString() });
+    } catch (err) {
+      setBackupError(err instanceof Error ? err.message : 'Backup failed.');
     } finally {
       setBackingUp(false);
+    }
+  };
+
+  const runImport = async (file: File, passphrase?: string) => {
+    setImporting(true);
+    setImportResult(null);
+    setImportError(null);
+    try {
+      const result = await importBackupFile(file, passphrase);
+      setImportResult(result);
+      setPendingImportFile(null);
+      setImportPassphrase('');
+    } catch (err) {
+      if (err instanceof EncryptedBackupRequiresPassphraseError) {
+        setPendingImportFile(file);
+      } else {
+        setImportError(err instanceof Error ? err.message : 'Import failed.');
+      }
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImporting(true);
-    setImportResult(null);
-    setImportError(null);
-    try {
-      const result = await importBackupZip(file);
-      setImportResult(result);
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Import failed.');
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    await runImport(file);
+  };
+
+  const handleImportWithPassphrase = async () => {
+    if (!pendingImportFile) return;
+    await runImport(pendingImportFile, importPassphrase);
   };
 
   const addField = async () => {
@@ -127,11 +150,15 @@ export const Settings: React.FC = () => {
         </div>
       </Panel>
 
+      <EncryptionSettings />
+
       <Panel className="p-4 space-y-3">
         <h2 className="text-sm font-semibold text-graphite dark:text-stone">Backup</h2>
         <p className="text-xs text-gray-600 dark:text-gray-400">
           A full-fidelity zip backup of every group, cost code, receipt, and receipt document — restorable on a clean
           install. Distinct from the CSV/PDF exports on the Reports page, which are lossy summaries.
+          {settings.encryptionEnabled &&
+            ' Since encryption is on, the backup stays encrypted too — restoring it (even on a new device) requires the same passphrase.'}
         </p>
         <p className="text-sm text-graphite dark:text-stone">
           Last backup: <span>{settings.lastBackupAt ? new Date(settings.lastBackupAt).toLocaleString() : 'Never'}</span>
@@ -145,6 +172,7 @@ export const Settings: React.FC = () => {
           </Button>
           <input ref={fileInputRef} type="file" accept=".zip,application/zip" className="hidden" onChange={handleImportFile} />
         </div>
+        {backupError && <p className="text-sm text-rust">{backupError}</p>}
         {importResult && (
           <p className="text-sm text-verdigris-dim dark:text-verdigris">
             Imported {importResult.groupsImported} group(s), {importResult.costCodesImported} cost code(s), and{' '}
@@ -153,7 +181,50 @@ export const Settings: React.FC = () => {
               ` Skipped ${importResult.receiptsSkippedAsDuplicate} likely duplicate receipt(s).`}
           </p>
         )}
-        {importError && <p className="text-sm text-rust">{importError}</p>}
+        {importError && !pendingImportFile && <p className="text-sm text-rust">{importError}</p>}
+
+        {pendingImportFile && (
+          <Modal
+            onClose={() => {
+              if (importing) return;
+              setPendingImportFile(null);
+              setImportPassphrase('');
+              setImportError(null);
+            }}
+          >
+            <div className="bg-white dark:bg-graphite rounded-panel shadow-xl w-full max-w-md p-5 space-y-4 border border-graphite/20 dark:border-white/20">
+              <h3 className="text-lg font-semibold text-graphite dark:text-stone">Encrypted Backup</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                This backup file ({pendingImportFile.name}) is encrypted. Enter its passphrase to import it.
+              </p>
+              <Input
+                type="password"
+                placeholder="Passphrase"
+                aria-label="Backup passphrase"
+                value={importPassphrase}
+                onChange={(e) => setImportPassphrase(e.target.value)}
+                disabled={importing}
+              />
+              {importError && <p className="text-sm text-rust">{importError}</p>}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  disabled={importing}
+                  onClick={() => {
+                    setPendingImportFile(null);
+                    setImportPassphrase('');
+                    setImportError(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button variant="primary" disabled={!importPassphrase || importing} onClick={handleImportWithPassphrase}>
+                  {importing ? 'Importing…' : 'Import'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
       </Panel>
 
       <Panel className="p-4 space-y-2">

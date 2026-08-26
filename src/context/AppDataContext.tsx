@@ -13,6 +13,7 @@ import {
   getSettings,
   putSettings,
 } from '../db';
+import { setEncryptionRequired, EncryptionLockedError } from '../security/session';
 
 type DeleteResult = { ok: true } | { ok: false; reason: 'has-children' };
 
@@ -35,6 +36,9 @@ interface AppDataContextValue {
   removeReceipt: (id: string) => Promise<void>;
 
   updateSettings: (updates: Partial<Settings>) => Promise<void>;
+
+  /** Re-fetches everything from storage — call after unlocking or after an encryption enable/disable migration. */
+  refresh: () => Promise<void>;
 }
 
 const AppDataContext = createContext<AppDataContextValue | null>(null);
@@ -47,11 +51,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
-    const [g, c, r, s] = await Promise.all([getGroups(), getCostCodes(), getReceipts(), getSettings()]);
+    const [g, c, s] = await Promise.all([getGroups(), getCostCodes(), getSettings()]);
     setGroups(g);
     setCostCodes(c);
-    setReceipts(r);
     setSettings(s);
+    setEncryptionRequired(s.encryptionEnabled);
+
+    try {
+      setReceipts(await getReceipts());
+    } catch (err) {
+      // Locked: leave receipts empty until the UnlockGate (see App.tsx) gets
+      // a correct passphrase and calls refresh() again.
+      if (err instanceof EncryptionLockedError) setReceipts([]);
+      else throw err;
+    }
   }, []);
 
   useEffect(() => {
@@ -149,6 +162,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         saveReceipt,
         removeReceipt,
         updateSettings,
+        refresh: reload,
       }}
     >
       {children}

@@ -12,7 +12,9 @@ import {
   putSettings,
 } from '../db';
 import { findLikelyDuplicate } from './duplicateDetection';
-import type { CostCode, CustomFieldDefinition, Group, Receipt } from '../types';
+import { deriveKey, encryptBlob, decryptBlob } from '../security/crypto';
+import { getSessionKey, EncryptionLockedError } from '../security/session';
+import type { CostCode, CustomFieldDefinition, Group, Receipt, Settings } from '../types';
 import { receiptTotalIncTax } from '../types';
 
 const SCHEMA_VERSION = 1;
@@ -260,4 +262,100 @@ export async function importBackupZip(file: File): Promise<ImportResult> {
   }
 
   return { groupsImported, costCodesImported, receiptsImported, receiptsSkippedAsDuplicate };
+}
+
+// --- Encrypted backup archive (Phase 4 step 6) ---
+//
+// buildBackupZip()/importBackupZip() above always work in plaintext — they go
+// through getReceipts()/getBlob(), which already decrypt transparently. The
+// wrapper below is a *separate* layer: it takes that same plain zip and, when
+// encryption is on, wraps it in an outer container so the exported file stays
+// encrypted at rest too — "if encryption is on, the exported PDFs/manifest
+// stay encrypted (ciphertext + salt/KDF params, never the passphrase)". The
+// salt/iterations travel in the clear alongside the ciphertext so a restore
+// on a brand new device can re-derive the same key from the same passphrase.
+
+interface EncryptedBackupHeader {
+  encrypted: true;
+  salt: string;
+  iterations: number;
+  iv: string;
+}
+
+export class EncryptedBackupRequiresPassphraseError extends Error {
+  constructor() {
+    super('This backup is encrypted. Enter the passphrase it was created with to restore it.');
+    this.name = 'EncryptedBackupRequiresPassphraseError';
+  }
+}
+
+export class IncorrectBackupPassphraseError extends Error {
+  constructor() {
+    super('Incorrect passphrase for this backup.');
+    this.name = 'IncorrectBackupPassphraseError';
+  }
+}
+
+/**
+ * The file a user actually downloads: the plain zip from buildBackupZip(),
+ * wrapped in an encrypted outer archive when `settings.encryptionEnabled`.
+ */
+export async function buildBackupFile(settings: Settings): Promise<Blob> {
+  const innerZip = await buildBackupZip();
+  if (!settings.encryptionEnabled) return innerZip;
+
+  const key = getSessionKey();
+  if (!key) throw new EncryptionLockedError();
+  if (!settings.encryptionSalt || settings.encryptionIterations == null) {
+    throw new Error('Encryption settings are missing or corrupt.');
+  }
+
+  const { iv, blob: ciphertextBlob } = await encryptBlob(key, innerZip);
+  const header: EncryptedBackupHeader = { encrypted: true, salt: settings.encryptionSalt, iterations: settings.encryptionIterations, iv };
+  const outer = zipSync({
+    'backup-header.json': strToU8(JSON.stringify(header)),
+    'payload.enc': new Uint8Array(await ciphertextBlob.arrayBuffer()),
+  });
+  return new Blob([outer as BlobPart], { type: 'application/zip' });
+}
+
+/**
+ * The counterpart to buildBackupFile(): transparently handles both an
+ * encrypted archive (needs `passphrase`, throws EncryptedBackupRequiresPassphraseError
+ * if omitted) and a plain Phase-3-style zip (backward compatible — imported
+ * directly, same as calling importBackupZip()).
+ */
+export async function importBackupFile(file: File, passphrase?: string): Promise<ImportResult> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+
+  // Peek at just the header entry first — unzipSync decompresses everything it
+  // extracts, so a full extraction here would decompress the entire archive a
+  // second time inside importBackupZip() below for the common (unencrypted) case.
+  let headerOnly: Record<string, Uint8Array>;
+  try {
+    headerOnly = unzipSync(bytes, { filter: (f) => f.name === 'backup-header.json' });
+  } catch {
+    throw new Error('Failed to extract zip file.');
+  }
+
+  const headerBytes = headerOnly['backup-header.json'];
+  if (!headerBytes) return importBackupZip(file);
+
+  const header = JSON.parse(strFromU8(headerBytes)) as EncryptedBackupHeader;
+  if (!passphrase) throw new EncryptedBackupRequiresPassphraseError();
+
+  const outer = unzipSync(bytes, { filter: (f) => f.name === 'payload.enc' });
+  const payloadBytes = outer['payload.enc'];
+  if (!payloadBytes) throw new Error('Invalid encrypted backup: missing payload.');
+
+  const key = await deriveKey(passphrase, header.salt, header.iterations);
+  let innerZipBlob: Blob;
+  try {
+    innerZipBlob = await decryptBlob(key, { iv: header.iv, blob: new Blob([payloadBytes as BlobPart]) }, 'application/zip');
+  } catch {
+    throw new IncorrectBackupPassphraseError();
+  }
+
+  return importBackupZip(new File([innerZipBlob], 'backup.zip', { type: 'application/zip' }));
 }
