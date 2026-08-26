@@ -7,6 +7,7 @@ import { CaptureReceipt } from './pages/CaptureReceipt';
 import { OcrReview } from './pages/OcrReview';
 import { ReceiptForm } from './pages/ReceiptForm';
 import { GroupsAndCodes } from './pages/GroupsAndCodes';
+import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 
 function ThemeEffect() {
@@ -35,6 +36,7 @@ function App() {
             <Route path="/receipts/:id/review" element={<OcrReview />} />
             <Route path="/receipts/:id" element={<ReceiptForm />} />
             <Route path="/groups" element={<GroupsAndCodes />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>

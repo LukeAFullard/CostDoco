@@ -58,6 +58,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     reload().finally(() => setLoading(false));
   }, [reload]);
 
+  // Best-effort: ask the browser not to evict this origin's storage under
+  // pressure. CostDoco's receipt PDFs are heavier than the rest of the
+  // Doco suite, so this matters more here than it would for pure text data.
+  useEffect(() => {
+    navigator.storage?.persist?.()?.catch(() => {});
+  }, []);
+
   const createGroup = async (name: string, color: string, parentId: string | null) => {
     const now = new Date().toISOString();
     const group: Group = { id: crypto.randomUUID(), name, color, parentId, archived: false, updatedAt: now };

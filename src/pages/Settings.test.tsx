@@ -1,9 +1,10 @@
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { Settings } from './Settings';
 import { AppDataProvider } from '../context/AppDataContext';
-import { closeDB, getSettings } from '../db';
+import { closeDB, getSettings, putReceipt } from '../db';
+import type { Receipt } from '../types';
 
 beforeEach(async () => {
   await closeDB();
@@ -54,5 +55,60 @@ describe('Settings', () => {
     await waitFor(() => {
       expect(screen.queryByText('Vendor Tax Number')).not.toBeInTheDocument();
     });
+  });
+
+  it('exports a zip backup and records the last-backup time', async () => {
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderPage();
+    expect(await screen.findByText('Never')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Export Zip Backup'));
+
+    await waitFor(async () => {
+      expect((await getSettings()).lastBackupAt).not.toBeNull();
+    });
+    expect(clickSpy).toHaveBeenCalled();
+    clickSpy.mockRestore();
+  });
+
+  it('imports a zip backup and shows the result summary', async () => {
+    const now = new Date().toISOString();
+    const receipt: Receipt = {
+      id: crypto.randomUUID(),
+      date: '2026-08-20',
+      taxMode: 'header',
+      lineItems: [{ id: crypto.randomUUID(), amountIncTax: 10 }],
+      currency: 'USD',
+      billable: false,
+      pdfBlobRef: 'unused',
+      pageBlobRefs: ['unused'],
+      createdAt: now,
+      updatedAt: now,
+    };
+    await putReceipt(receipt);
+    const { buildBackupZip } = await import('../utils/backup');
+    const zipBlob = await buildBackupZip();
+
+    await closeDB();
+    indexedDB = new IDBFactory();
+
+    renderPage();
+    await screen.findByText('Never');
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File([zipBlob], 'backup.zip', { type: 'application/zip' });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    expect(await screen.findByText(/imported 0 group\(s\), 0 cost code\(s\), and 1 receipt\(s\)/i)).toBeInTheDocument();
+  });
+
+  it('shows an error message for a file that is not a valid backup', async () => {
+    renderPage();
+    await screen.findByText('Import Zip Backup');
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const badFile = new File(['not a zip'], 'bad.zip', { type: 'application/zip' });
+    fireEvent.change(fileInput, { target: { files: [badFile] } });
+
+    expect(await screen.findByText(/failed to extract zip file/i)).toBeInTheDocument();
   });
 });
