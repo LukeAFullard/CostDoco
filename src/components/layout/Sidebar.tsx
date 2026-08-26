@@ -1,10 +1,11 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Receipt, FolderTree, Settings as SettingsIcon } from 'lucide-react';
+import { Receipt, FolderTree, BarChart3, Settings as SettingsIcon } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: 'Receipts', icon: Receipt, end: true },
   { to: '/groups', label: 'Groups & Codes', icon: FolderTree, end: false },
+  { to: '/reports', label: 'Reports', icon: BarChart3, end: false },
   { to: '/settings', label: 'Settings', icon: SettingsIcon, end: false },
 ];
 
