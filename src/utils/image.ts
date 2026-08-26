@@ -66,6 +66,23 @@ export function cropImageToRect(img: HTMLImageElement, corners: Point[]): Promis
   });
 }
 
+/**
+ * Re-encodes an image blob as JPEG at the given quality (0..1), returning a
+ * data URL plus its pixel dimensions — the shape `utils/pdf.ts#buildReceiptPdf`
+ * expects for one page. Used to apply the Phase 2 compression presets before
+ * a page goes into the final receipt PDF.
+ */
+export async function blobToPdfPage(blob: Blob, quality: number): Promise<{ dataUrl: string; width: number; height: number }> {
+  const img = await fileToImage(blob);
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D context unavailable');
+  ctx.drawImage(img, 0, 0);
+  return { dataUrl: canvas.toDataURL('image/jpeg', quality), width: img.naturalWidth, height: img.naturalHeight };
+}
+
 export const DEFAULT_CORNERS: Point[] = [
   { x: 0.05, y: 0.05 },
   { x: 0.95, y: 0.05 },

@@ -4,6 +4,7 @@ import { AppDataProvider, useAppData } from './context/AppDataContext';
 import { AppShell } from './components/layout/AppShell';
 import { Dashboard } from './pages/Dashboard';
 import { CaptureReceipt } from './pages/CaptureReceipt';
+import { OcrReview } from './pages/OcrReview';
 import { ReceiptForm } from './pages/ReceiptForm';
 import { GroupsAndCodes } from './pages/GroupsAndCodes';
 import { Settings } from './pages/Settings';
@@ -31,6 +32,7 @@ function App() {
           <Route element={<AppShell />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/receipts/new" element={<CaptureReceipt />} />
+            <Route path="/receipts/:id/review" element={<OcrReview />} />
             <Route path="/receipts/:id" element={<ReceiptForm />} />
             <Route path="/groups" element={<GroupsAndCodes />} />
             <Route path="/settings" element={<Settings />} />
