@@ -18,17 +18,18 @@
      ```ts
      interface Receipt {
        id: string;
-       groupId?: string;
+       groupId?: string; // undefined = "Uncategorized" at the UI layer, no seeded record
        codeId?: string;
        date: string;
        vendor?: string;
-       receiptNumber?: string;
-       vendorTaxNumber?: string;
+       receiptNumber?: string; // the one built-in reference field
+       customFields?: Record<string, string>; // user-defined extra fields
        note?: string;
        taxMode: 'header' | 'itemized';
        lineItems: LineItem[]; // always >= 1; header mode = exactly 1
-       currency: string;
-       billable: boolean; // for Phase 4 Bridge use
+       currency: string; // transaction currency, as printed on the receipt
+       convertedAmount?: number; // manual home-currency equivalent, optional
+       billable: boolean; // for Phase 7 Bridge use
        pdfBlobRef: string;
        ocrBoxes?: OcrBox[]; // populated in Phase 2
      }
@@ -39,7 +40,9 @@
      }
      ```
    - Derive tax amount as `amountIncTax - amountExTax` at read time rather than storing it, to avoid rounding drift on edits.
-   - Group/code are optional — an uncategorised receipt is valid (see open question §8.8; build it optional now, tighten later if the answer comes back "required").
+   - Group/code are optional — an uncategorised receipt is valid; "Uncategorized" is rendered by the UI for `groupId: undefined`, not a real seeded group record.
+   - Add a `homeCurrency` field to the `settings` store (single reporting currency). When a receipt's `currency` differs from it, prompt (optionally, never mandatory) for `convertedAmount`.
+   - Add a `customFieldDefinitions: { id: string; label: string }[]` list to `settings`. Build a small management UI (add/rename/remove a definition) — this is what backs the `customFields` bag on each receipt, matching TimeDoco's existing custom-field pattern.
 
 4. **Capture flow**
    - "Take Photo" (`<input capture="environment">` or `getUserMedia`) and "Upload File" (accepts `image/*` and `application/pdf`) as two explicit entry points.
@@ -53,6 +56,8 @@
 7. **Manual entry form**
    - All `Receipt` fields above, editable, all optional except `date` and `taxMode`.
    - Tax-mode toggle: defaults to `header` (single implicit line item); switching to `itemized` reveals an "add line" control.
+   - Render one input per entry in `customFieldDefinitions`, populating `customFields`; include an inline "add a field" action that creates a new definition on the fly rather than forcing a trip to settings.
+   - If `currency` differs from `settings.homeCurrency`, show an optional `convertedAmount` input alongside the total.
 
 8. **Temporary storage shim**
    - For this phase only: store the raw cropped image bytes directly as `pdfBlobRef`. Phase 2 replaces this with the real compressed PDF from the liteparse pipeline — flag this in code with a `// TODO(phase-2)` comment so it isn't missed.
