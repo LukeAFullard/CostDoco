@@ -100,7 +100,7 @@ Receipts carry more sensitive data (partial card numbers, addresses) than notes 
 - [ ] **Phase 2 — OCR & compression:** liteparse/tesseract pipeline, correction UI, compression preview, duplicate detection. → `docs/implementation/02-ocr-compression-pipeline.md`
 - [ ] **Phase 3 — Reporting & backup:** CSV export, PDF summary report, zip backup/restore, persistent storage, backup reminders. → `docs/implementation/03-reporting-export-backup.md`
 - [ ] **Phase 4 — Security:** encryption at rest, billable flag wiring. → `docs/implementation/04-security-and-bridge.md`
-- [ ] **Phase 5 — Stretch:** auto-crop/perspective correction, vendor memory, OCR-assisted line-item detection, named export templates. → `docs/implementation/05-stretch-enhancements.md`
+- [x] **Phase 5 — Stretch:** vendor memory and named export templates shipped; auto-crop/perspective correction and OCR-assisted line-item detection left open (see doc for reasons). → `docs/implementation/05-stretch-enhancements.md`
 - [ ] **Phase 6 — Open questions resolved:** hosting model, currency handling, custom fields, categorisation defaults, version pin. → `docs/implementation/06-open-questions-resolved.md`
 - [ ] **Phase 7 — Suite Bridge:** deliberately deferred until Phases 0–6 are stable and same-domain hosting is confirmed in production. Not yet scoped.
 

@@ -4,7 +4,7 @@ import { Panel } from '../components/ui/Panel';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useAppData } from '../context/AppDataContext';
-import { buildReceiptsCsv } from '../utils/csv';
+import { CSV_TEMPLATES, type CsvTemplateId } from '../utils/csvTemplates';
 import { generateReceiptsReportPdf } from '../utils/pdfReport';
 import { computeReportTotals } from '../utils/reportTotals';
 import { downloadBlob } from '../utils/download';
@@ -21,6 +21,7 @@ export const Reports: React.FC = () => {
   const [codeFilter, setCodeFilter] = useState('');
   const [billableOnly, setBillableOnly] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [csvTemplateId, setCsvTemplateId] = useState<CsvTemplateId>('generic');
 
   const filtered = useMemo(() => {
     return receipts.filter((r) => {
@@ -40,8 +41,12 @@ export const Reports: React.FC = () => {
   const dateRangeLabel = startDate || endDate ? `${startDate || 'earliest'} – ${endDate || 'latest'}` : undefined;
 
   const handleExportCsv = () => {
-    const csv = buildReceiptsCsv(filtered, groups, costCodes, settings?.customFieldDefinitions ?? []);
-    downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `costdoco-receipts-${new Date().toISOString().slice(0, 10)}.csv`);
+    const template = CSV_TEMPLATES.find((t) => t.id === csvTemplateId) ?? CSV_TEMPLATES[0];
+    const csv = template.build(filtered, groups, costCodes, settings?.customFieldDefinitions ?? []);
+    downloadBlob(
+      new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
+      `costdoco-receipts-${template.id}-${new Date().toISOString().slice(0, 10)}.csv`
+    );
   };
 
   const handleGeneratePdf = async () => {
@@ -138,14 +143,37 @@ export const Reports: React.FC = () => {
         )}
       </Panel>
 
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={handleExportCsv} disabled={filtered.length === 0}>
-          <Download size={16} className="mr-1" /> Export CSV
-        </Button>
-        <Button variant="primary" onClick={handleGeneratePdf} disabled={filtered.length === 0 || generatingPdf}>
-          <FileText size={16} className="mr-1" /> {generatingPdf ? 'Generating…' : 'Generate PDF Report'}
-        </Button>
-      </div>
+      <Panel className="p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-graphite dark:text-stone">Export</h2>
+        <div>
+          <label htmlFor="csv-template" className="block text-sm font-medium text-graphite dark:text-stone mb-1">
+            CSV format
+          </label>
+          <select
+            id="csv-template"
+            value={csvTemplateId}
+            onChange={(e) => setCsvTemplateId(e.target.value as CsvTemplateId)}
+            className="w-full sm:w-auto px-3 py-2 border border-graphite/20 dark:border-white/20 rounded-panel bg-white dark:bg-graphite text-graphite dark:text-stone"
+          >
+            {CSV_TEMPLATES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {CSV_TEMPLATES.find((t) => t.id === csvTemplateId)?.description}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={handleExportCsv} disabled={filtered.length === 0}>
+            <Download size={16} className="mr-1" /> Export CSV
+          </Button>
+          <Button variant="primary" onClick={handleGeneratePdf} disabled={filtered.length === 0 || generatingPdf}>
+            <FileText size={16} className="mr-1" /> {generatingPdf ? 'Generating…' : 'Generate PDF Report'}
+          </Button>
+        </div>
+      </Panel>
 
       {filtered.length === 0 && (
         <p className="text-sm text-gray-500 dark:text-gray-400">No receipts match the current filters.</p>
