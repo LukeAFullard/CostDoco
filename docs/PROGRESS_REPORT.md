@@ -1,6 +1,6 @@
 # CostDoco — Progress Report
 
-_Last updated: 2026-08-26_
+_Last updated: 2026-08-27_
 
 A snapshot of what's built, what's verified, and what's genuinely still open — as
 distinct from what the phase docs describe as done. Where a phase's own
@@ -20,7 +20,7 @@ rather than glossed over.
 | 6 | Open questions resolved | Done |
 | 7 | Doco Suite Bridge | Not started — deliberately unscoped until Phases 0–6 are stable in production |
 
-Full test suite: **200 tests passing** across 30 files (Vitest + Testing
+Full test suite: **205 tests passing** across 30 files (Vitest + Testing
 Library). `tsc -b` and `oxlint` both clean (two pre-existing lint warnings in
 `AppDataContext.tsx` remain, unrelated to functionality).
 
@@ -63,6 +63,20 @@ Library). `tsc -b` and `oxlint` both clean (two pre-existing lint warnings in
 - `liteparse-wasm`'s ~5.5MB `.wasm` binary and tesseract's assets are
   lazy-loaded on first OCR use and cached at runtime, not precached at
   install — confirmed via production build output.
+- **`ocrEnabled` setting** (Settings → OCR-Assisted Entry, default on):
+  a real kill switch, not just a per-receipt "Skip OCR" — turning it off
+  skips the OCR pipeline entirely (compression/preview still runs) with no
+  code change needed. Added after deciding that staying on tesseract.js's
+  default CDN-hosted assets (rather than self-hosting) is an acceptable
+  tradeoff as long as it's stated plainly: OCR needs a network connection
+  the first time it runs, no receipt data is ever sent anywhere, and manual
+  entry always works regardless. `OcrReview.tsx`'s failure messaging says
+  the same thing inline if the pipeline errors out.
+- Fixed a correctness bug found while wiring up the toggle: the detected
+  total was being written into `lineItems[0]` regardless of tax mode, which
+  is wrong in itemized mode (there, line item 0 is one line, not the
+  receipt's total). Now applied only in header mode, where that invariant
+  actually holds.
 
 ### Phase 3 — Reporting, export & backup
 - Report filters: date range, group, code, billable-only.
