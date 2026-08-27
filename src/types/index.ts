@@ -84,6 +84,13 @@ export interface Settings {
   encryptionSalt?: string; // base64
   encryptionIterations?: number;
   encryptionVerifier?: { iv: string; ciphertext: string };
+  // OCR-assisted entry (Phase 2) — on by default, but a user kill switch:
+  // tesseract.js's recognition engine is fetched from a CDN on first OCR use
+  // (not self-hosted, see docs/implementation/02-ocr-compression-pipeline.md),
+  // so OCR needs a network connection the first time; manual entry always
+  // works regardless. Optional so existing settings records (saved before
+  // this field existed) are treated as enabled — see isOcrEnabled below.
+  ocrEnabled?: boolean;
 }
 
 /** Derives the tax amount at read time rather than storing it, to avoid rounding drift on edits. */
@@ -98,4 +105,9 @@ export function receiptTotalIncTax(receipt: Pick<Receipt, 'lineItems'>): number 
 
 export function receiptTotalExTax(receipt: Pick<Receipt, 'lineItems'>): number {
   return receipt.lineItems.reduce((sum, li) => sum + (li.amountExTax ?? li.amountIncTax ?? 0), 0);
+}
+
+/** `ocrEnabled` defaults to on — undefined (settings saved before this field existed) counts as enabled. */
+export function isOcrEnabled(settings: Pick<Settings, 'ocrEnabled'> | null | undefined): boolean {
+  return settings?.ocrEnabled !== false;
 }

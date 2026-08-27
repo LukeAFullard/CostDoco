@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { receiptTotalExTax, receiptTotalIncTax, taxAmount, type Receipt } from './index';
+import { isOcrEnabled, receiptTotalExTax, receiptTotalIncTax, taxAmount, type Receipt } from './index';
 
 describe('taxAmount', () => {
   it('derives the tax amount from inc/ex tax', () => {
@@ -32,5 +32,19 @@ describe('receiptTotalIncTax / receiptTotalExTax', () => {
 
   it('treats an empty line item as zero', () => {
     expect(receiptTotalIncTax({ lineItems: [{ id: '1' }] })).toBe(0);
+  });
+});
+
+describe('isOcrEnabled', () => {
+  it('defaults to enabled when settings or the field is missing', () => {
+    expect(isOcrEnabled(undefined)).toBe(true);
+    expect(isOcrEnabled(null)).toBe(true);
+    expect(isOcrEnabled({})).toBe(true);
+    expect(isOcrEnabled({ ocrEnabled: undefined })).toBe(true);
+  });
+
+  it('respects an explicit true or false', () => {
+    expect(isOcrEnabled({ ocrEnabled: true })).toBe(true);
+    expect(isOcrEnabled({ ocrEnabled: false })).toBe(false);
   });
 });

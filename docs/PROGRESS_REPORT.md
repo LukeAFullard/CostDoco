@@ -133,11 +133,16 @@ genuine risk remains — recorded here so they don't get lost:
    input (thermal fade, skew, crumpled paper, low light) has **not** been
    validated. Manual entry always works regardless, so this is a quality/UX
    risk, not a blocking one.
-2. **tesseract.js is not self-hosted.** `src/ocr/tesseractEngine.ts`
-   currently uses tesseract.js's default CDN-hosted core/worker/lang-data
-   files. This works online but is a gap against the "100% offline PWA"
-   non-negotiable for OCR specifically (capture, manual entry, and
-   everything else genuinely works fully offline already).
+2. **tesseract.js is not self-hosted — accepted, not a gap.** `src/ocr/tesseractEngine.ts`
+   uses tesseract.js's default CDN-hosted core/worker/lang-data files rather
+   than self-hosting them. This is a deliberate decision: manual entry is
+   always available regardless of OCR, so needing a network connection the
+   first time OCR runs is a degraded experience, not a broken one, and no
+   receipt data is sent to that CDN. The `ocrEnabled` setting (Settings →
+   OCR-Assisted Entry) states this plainly to the user and doubles as a full
+   kill switch — turning it off skips the OCR pipeline entirely, so it can be
+   disabled without a code change if real-world testing shows it's not
+   pulling its weight. See `docs/ocr-spike-results.md`.
 3. **Deployment/infra for the `/costs/` subpath is not scoped.** Phase 6
    confirmed the hosting *model* (same-origin subpath) and the app is built
    to support it, but routing `timedoco.com/costs/*` to this build's output
@@ -153,11 +158,14 @@ genuine risk remains — recorded here so they don't get lost:
   should only be picked up once Phases 0–6 have been stable in production
   and the same-domain hosting from Phase 6 is confirmed for real (not just
   designed for).
-- Close the three OCR-related gaps above, roughly in this order: self-host
-  tesseract's assets (mechanical, no design decisions needed), then source
-  real sample receipts to actually validate/tune OCR accuracy, then decide
-  whether the CSV/Xero/QuickBooks templates need real-world validation
-  against an actual import too.
+- Source real sample receipts to validate/tune OCR accuracy — the one real
+  remaining OCR gap (#1 above). Once there's real-world usage data, decide
+  whether the field-matching heuristic needs work (confidence gating,
+  locale-aware number parsing, an actual settings-backed keyword list) or
+  whether the `ocrEnabled` kill switch is the simpler answer for cases where
+  it doesn't hold up.
+- Decide whether the CSV/Xero/QuickBooks templates need real-world
+  validation against an actual import too.
 - Revisit the two left-open Phase 5 stretch candidates (auto-crop, OCR
   line-item detection) only if they become an actual pain point in use —
   neither is required for feature-completeness.

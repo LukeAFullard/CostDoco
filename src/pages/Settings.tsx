@@ -8,6 +8,7 @@ import { buildBackupFile, importBackupFile, EncryptedBackupRequiresPassphraseErr
 import { downloadBlob } from '../utils/download';
 import { EncryptionSettings } from '../components/EncryptionSettings';
 import { Modal } from '../components/ui/Modal';
+import { isOcrEnabled } from '../types';
 
 export const Settings: React.FC = () => {
   const { settings, updateSettings } = useAppData();
@@ -148,6 +149,25 @@ export const Settings: React.FC = () => {
             Add
           </Button>
         </div>
+      </Panel>
+
+      <Panel className="p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-graphite dark:text-stone">OCR-Assisted Entry</h2>
+        <p className="text-xs text-gray-600 dark:text-gray-400">
+          When you capture a receipt, CostDoco can automatically read the total (and receipt number, where possible)
+          and pre-fill them for you — always editable, never required. The first time OCR runs, it needs an internet
+          connection to fetch the recognition engine; no receipt data is ever sent anywhere in the process. If OCR
+          fails or you're offline, you can always continue and enter everything manually. Turn this off entirely if
+          it isn't working well for you.
+        </p>
+        <label className="flex items-center gap-2 text-sm text-graphite dark:text-stone">
+          <input
+            type="checkbox"
+            checked={isOcrEnabled(settings)}
+            onChange={(e) => updateSettings({ ocrEnabled: e.target.checked })}
+          />
+          Automatically extract totals from captured receipts (OCR)
+        </label>
       </Panel>
 
       <EncryptionSettings />

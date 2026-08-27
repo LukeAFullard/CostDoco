@@ -4,7 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { IDBFactory } from 'fake-indexeddb';
 import { OcrReview } from './OcrReview';
 import { AppDataProvider } from '../context/AppDataContext';
-import { closeDB, getBlob, getReceipt, putBlob, putReceipt } from '../db';
+import { closeDB, getBlob, getReceipt, getSettings, putBlob, putReceipt, putSettings } from '../db';
 import type { Receipt } from '../types';
 import { runOcrPipeline } from '../ocr/pipeline';
 import * as imageUtils from '../utils/image';
@@ -186,6 +186,60 @@ describe('OcrReview', () => {
 
     expect(await screen.findByText(/OCR ran on 1 of 2 pages/i)).toBeInTheDocument();
     expect(screen.getByText(/already had a readable text layer/i)).toBeInTheDocument();
+  });
+
+  it('skips the OCR pipeline entirely when OCR is turned off in Settings', async () => {
+    await putSettings({ ...(await getSettings()), ocrEnabled: false });
+
+    const receipt = makeReceipt();
+    await putReceipt(receipt);
+    await putBlob({ id: 'raw-1', blob: new Blob(['raw'], { type: 'image/jpeg' }), mimeType: 'image/jpeg', createdAt: new Date().toISOString() });
+
+    renderPage(receipt.id);
+
+    expect(await screen.findByText(/ocr is turned off in settings/i)).toBeInTheDocument();
+    expect(runOcrPipeline).not.toHaveBeenCalled();
+    expect(screen.queryByText('Skip OCR')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Continue to Details'));
+
+    await waitFor(async () => {
+      const saved = await getReceipt(receipt.id);
+      expect(saved?.ocrBoxes).toBeUndefined();
+      expect(saved?.lineItems[0].amountIncTax).toBeUndefined();
+      expect(saved?.pdfBlobRef).not.toBe('raw-1');
+    });
+  });
+
+  it('does not apply a detected total to a line item in itemized mode', async () => {
+    vi.mocked(runOcrPipeline).mockResolvedValue({
+      ocrBoxes: [{ page: 0, text: 'TOTAL $11.50', bbox: [10, 20, 90, 32], confidence: 0.95 }],
+      pageComplexity: [],
+    });
+
+    const receipt = makeReceipt({
+      taxMode: 'itemized',
+      lineItems: [
+        { id: crypto.randomUUID(), description: 'Nails' },
+        { id: crypto.randomUUID(), description: 'Screws' },
+      ],
+    });
+    await putReceipt(receipt);
+    await putBlob({ id: 'raw-1', blob: new Blob(['raw'], { type: 'image/jpeg' }), mimeType: 'image/jpeg', createdAt: new Date().toISOString() });
+
+    renderPage(receipt.id);
+    expect(await screen.findByText(/total \(inc\. tax\)/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Continue to Details'));
+
+    await waitFor(async () => {
+      const saved = await getReceipt(receipt.id);
+      expect(saved?.lineItems).toHaveLength(2);
+      expect(saved?.lineItems[0].amountIncTax).toBeUndefined();
+      expect(saved?.lineItems[1].amountIncTax).toBeUndefined();
+      // The detected total was still recorded for reference, just not forced onto a line item.
+      expect(saved?.ocrBoxes).toHaveLength(1);
+    });
   });
 
   it('falls back to a working Continue button when the OCR pipeline throws', async () => {

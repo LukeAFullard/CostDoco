@@ -68,6 +68,7 @@ const DEFAULT_SETTINGS: Settings = {
   lastBackupAt: null,
   backupReminderDays: 30,
   encryptionEnabled: false,
+  ocrEnabled: true,
 };
 
 let dbPromise: Promise<IDBPDatabase<CostDocoDB>> | null = null;

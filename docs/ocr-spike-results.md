@@ -49,11 +49,26 @@ Definition of Done is otherwise met — OCR pre-fills the total when confident, 
 manual entry, and a receipt saved with OCR skipped (offline, pipeline failure, or the
 explicit "Skip OCR" action) works via the unchanged Phase 1 manual path.
 
+## Decided: tesseract.js stays CDN-hosted, not self-hosted
+
+`src/ocr/tesseractEngine.ts` uses tesseract.js's default CDN-hosted core/worker/lang-data
+files rather than self-hosting them under the app's own origin. This is a deliberate
+decision, not an oversight: manual entry is always available regardless of whether OCR
+runs, so OCR needing a network connection the first time it's used is a degraded
+experience, not a broken one — and no receipt data is sent to that CDN, only tesseract's
+own static assets are fetched from it, so the "100% client-side, your data stays on your
+device" privacy guarantee holds either way. This is made explicit to the user: the OCR
+toggle in Settings (`ocrEnabled` on the `Settings` type) states plainly that OCR needs a
+network connection the first time it runs and that no receipt data is ever sent anywhere,
+and `OcrReview.tsx` explains the same thing inline if the OCR pipeline fails (the most
+likely cause being no network) — with "Continue Without OCR" always one click away.
+
+The `ocrEnabled` setting (default: on) is also a full kill switch: turning it off skips
+the OCR pipeline entirely (compression/preview still runs), so if real-world testing turns
+up OCR that isn't pulling its weight, it can be turned off without a code change.
+
 ## What's still needed
 
 1. A set of real sample receipt photos (mix of clean and messy conditions) to actually run
-   the pipeline against and record accuracy/timing numbers here.
-2. Self-hosting tesseract.js's core/worker/lang-data files under the app's own origin
-   (`src/ocr/tesseractEngine.ts` currently uses tesseract.js's defaults, which fetch from a
-   CDN) — required for the "100% offline PWA" non-negotiable once OCR has actually run
-   once and needs to keep working offline afterward.
+   the pipeline against and record accuracy/timing numbers here. This is now the only
+   thing standing between "the pipeline runs without crashing" and "OCR is actually good."
