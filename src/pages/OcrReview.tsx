@@ -9,7 +9,7 @@ import { buildReceiptPdf, COMPRESSION_PRESETS, COMPRESSION_PRESET_LABELS, type C
 import { hashBlob } from '../utils/duplicateDetection';
 import { runOcrPipeline } from '../ocr/pipeline';
 import { matchFields } from '../ocr/fieldMatch';
-import type { OcrBox } from '../types';
+import { isOcrEnabled, type OcrBox } from '../types';
 import type { PageComplexityStats } from '@llamaindex/liteparse-wasm';
 
 type Stage =
@@ -20,7 +20,8 @@ type Stage =
 export const OcrReview: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { receipts, saveReceipt } = useAppData();
+  const { receipts, settings, saveReceipt } = useAppData();
+  const ocrEnabled = isOcrEnabled(settings);
 
   const receipt = useMemo(() => receipts.find((r) => r.id === id), [receipts, id]);
 
@@ -46,6 +47,11 @@ export const OcrReview: React.FC = () => {
     if (!receipt) return;
     let cancelled = false;
 
+    // Skips the OCR pipeline entirely when the user has turned it off in
+    // Settings — compression/preview still runs either way, only recognition
+    // (and its CDN fetch on first use) is skipped.
+    const runOcr = (bytes: Uint8Array) => (ocrEnabled ? runOcrPipeline(bytes) : Promise.resolve({ ocrBoxes: [], pageComplexity: [] }));
+
     (async () => {
       try {
         const blobs = await Promise.all(receipt.pageBlobRefs.map((ref) => getBlob(ref)));
@@ -60,7 +66,7 @@ export const OcrReview: React.FC = () => {
           setPageDataForPreset({ images: [], nativePdfBytes: bytes });
           setPagesReady(true);
 
-          const { ocrBoxes: boxes, pageComplexity: complexity } = await runOcrPipeline(bytes);
+          const { ocrBoxes: boxes, pageComplexity: complexity } = await runOcr(bytes);
           if (cancelled) return;
           setOcrBoxes(boxes);
           setPageComplexity(complexity);
@@ -77,7 +83,7 @@ export const OcrReview: React.FC = () => {
         const bytes = new Uint8Array(await reviewPdf.arrayBuffer());
         if (cancelled) return;
 
-        const { ocrBoxes: boxes, pageComplexity: complexity } = await runOcrPipeline(bytes);
+        const { ocrBoxes: boxes, pageComplexity: complexity } = await runOcr(bytes);
         if (cancelled) return;
         setOcrBoxes(boxes);
         setPageComplexity(complexity);
@@ -87,7 +93,13 @@ export const OcrReview: React.FC = () => {
           isNativePdf: false,
         });
       } catch (err) {
-        if (!cancelled) setStage({ kind: 'error', message: err instanceof Error ? err.message : 'OCR processing failed.' });
+        if (!cancelled) {
+          const detail = err instanceof Error ? err.message : 'OCR processing failed.';
+          setStage({
+            kind: 'error',
+            message: `${detail} This usually just means there's no internet connection right now — OCR needs one the first time it runs, to fetch its recognition engine (no receipt data is ever sent anywhere in the process).`,
+          });
+        }
       }
     })();
 
@@ -140,7 +152,12 @@ export const OcrReview: React.FC = () => {
       const usedOcr = !skipOcr;
       const appliedMatches = usedOcr ? matches : {};
       const lineItems = receipt.lineItems.slice();
-      if (lineItems.length > 0) {
+      // Only header mode's single line item represents the whole receipt total
+      // (invariant: header mode = exactly 1 line item) — in itemized mode, a
+      // detected *total* isn't the same thing as one line item's amount, so
+      // leave line items alone and let the OCR review panel above be the only
+      // place the detected total is surfaced for that mode.
+      if (receipt.taxMode === 'header' && lineItems.length > 0) {
         lineItems[0] = {
           ...lineItems[0],
           amountExTax: lineItems[0].amountExTax ?? appliedMatches.amountExTax?.value,
@@ -179,12 +196,12 @@ export const OcrReview: React.FC = () => {
       <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4">
         <h1 className="text-xl font-bold text-graphite dark:text-stone">Processing Receipt…</h1>
         <Panel className="p-6 text-center text-gray-600 dark:text-gray-400">
-          <p>Running OCR and preparing the compressed document. This can take a moment.</p>
+          <p>{ocrEnabled ? 'Running OCR and preparing the compressed document. This can take a moment.' : 'Preparing the compressed document. This can take a moment.'}</p>
         </Panel>
         {finalizeError && <p className="text-sm text-rust">{finalizeError}</p>}
         <div className="flex justify-end">
           <Button variant="ghost" disabled={finalizing || !pagesReady} onClick={() => finalize(true)}>
-            {pagesReady ? 'Skip OCR & Continue' : 'Loading pages…'}
+            {!pagesReady ? 'Loading pages…' : ocrEnabled ? 'Skip OCR & Continue' : 'Continue'}
           </Button>
         </div>
       </div>
@@ -262,37 +279,45 @@ export const OcrReview: React.FC = () => {
 
       <Panel className="p-4 space-y-2">
         <h2 className="text-sm font-semibold text-graphite dark:text-stone">Detected Amounts</h2>
-        {pageComplexity.length > 0 && (
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            OCR ran on {pageComplexity.filter((p) => p.needsOcr).length} of {pageComplexity.length}{' '}
-            {pageComplexity.length === 1 ? 'page' : 'pages'}
-            {pageComplexity.some((p) => !p.needsOcr) ? ' — the rest already had a readable text layer.' : '.'}
-          </p>
-        )}
-        {matches.amountIncTax ? (
-          <p className="text-sm text-graphite dark:text-stone">
-            Total (inc. tax): <span className="font-mono tabular-nums font-semibold">{matches.amountIncTax.value.toFixed(2)}</span>
+        {!ocrEnabled ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            OCR is turned off in Settings — enter the total manually on the next screen.
           </p>
         ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400">No total detected — enter it manually on the next screen.</p>
-        )}
-        {matches.amountExTax && (
-          <p className="text-sm text-graphite dark:text-stone">
-            Amount (ex. tax): <span className="font-mono tabular-nums font-semibold">{matches.amountExTax.value.toFixed(2)}</span>
-          </p>
-        )}
-        {matches.receiptNumber && (
-          <p className="text-sm text-graphite dark:text-stone">Receipt number: <span className="font-mono">{matches.receiptNumber.value}</span></p>
-        )}
-        {ocrBoxes.length > 0 && (
-          <details className="text-xs text-gray-600 dark:text-gray-400">
-            <summary className="cursor-pointer">Show all {ocrBoxes.length} OCR'd lines</summary>
-            <ul className="mt-1 space-y-0.5">
-              {ocrBoxes.map((box, i) => (
-                <li key={i}>{box.text}</li>
-              ))}
-            </ul>
-          </details>
+          <>
+            {pageComplexity.length > 0 && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                OCR ran on {pageComplexity.filter((p) => p.needsOcr).length} of {pageComplexity.length}{' '}
+                {pageComplexity.length === 1 ? 'page' : 'pages'}
+                {pageComplexity.some((p) => !p.needsOcr) ? ' — the rest already had a readable text layer.' : '.'}
+              </p>
+            )}
+            {matches.amountIncTax ? (
+              <p className="text-sm text-graphite dark:text-stone">
+                Total (inc. tax): <span className="font-mono tabular-nums font-semibold">{matches.amountIncTax.value.toFixed(2)}</span>
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No total detected — enter it manually on the next screen.</p>
+            )}
+            {matches.amountExTax && (
+              <p className="text-sm text-graphite dark:text-stone">
+                Amount (ex. tax): <span className="font-mono tabular-nums font-semibold">{matches.amountExTax.value.toFixed(2)}</span>
+              </p>
+            )}
+            {matches.receiptNumber && (
+              <p className="text-sm text-graphite dark:text-stone">Receipt number: <span className="font-mono">{matches.receiptNumber.value}</span></p>
+            )}
+            {ocrBoxes.length > 0 && (
+              <details className="text-xs text-gray-600 dark:text-gray-400">
+                <summary className="cursor-pointer">Show all {ocrBoxes.length} OCR'd lines</summary>
+                <ul className="mt-1 space-y-0.5">
+                  {ocrBoxes.map((box, i) => (
+                    <li key={i}>{box.text}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </>
         )}
       </Panel>
 
@@ -315,10 +340,12 @@ export const OcrReview: React.FC = () => {
       {finalizeError && <p className="text-sm text-rust">{finalizeError}</p>}
 
       <div className="flex justify-end gap-2">
-        <Button variant="ghost" disabled={finalizing} onClick={() => finalize(true)}>
-          Skip OCR
-        </Button>
-        <Button variant="primary" disabled={finalizing} onClick={() => finalize(false)}>
+        {ocrEnabled && (
+          <Button variant="ghost" disabled={finalizing} onClick={() => finalize(true)}>
+            Skip OCR
+          </Button>
+        )}
+        <Button variant="primary" disabled={finalizing} onClick={() => finalize(!ocrEnabled)}>
           {finalizing ? 'Saving…' : 'Continue to Details'}
         </Button>
       </div>

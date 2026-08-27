@@ -38,6 +38,23 @@ describe('Settings', () => {
     });
   });
 
+  it('turns OCR off and back on', async () => {
+    renderPage();
+    const toggle = await screen.findByLabelText(/automatically extract totals/i);
+    expect(toggle).toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(async () => {
+      expect((await getSettings()).ocrEnabled).toBe(false);
+    });
+    expect(toggle).not.toBeChecked();
+
+    fireEvent.click(toggle);
+    await waitFor(async () => {
+      expect((await getSettings()).ocrEnabled).toBe(true);
+    });
+  });
+
   it('switches theme', async () => {
     renderPage();
     fireEvent.click(await screen.findByText('Dark'));
