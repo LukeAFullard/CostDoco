@@ -163,8 +163,16 @@ genuine risk remains — recorded here so they don't get lost:
    is explicitly flagged as an infrastructure task for whoever owns that
    deployment platform, not app code.
 4. **Production bundle has a large chunk.** `npm run build` warns about a
-   ~778KB (gzip ~256KB) main chunk. Not a functional issue, but worth
-   revisiting with code-splitting if initial load time becomes a concern.
+   ~778KB (gzip ~256KB) main chunk — mainly React + react-router-dom + jsPDF +
+   jspdf-autotable + all app pages, since `App.tsx` imports every page
+   statically rather than lazily per-route. Not a functional issue, but
+   route-level code-splitting (`React.lazy`) is the real fix if load time
+   ever becomes a concern; not done, since it touches every route for a
+   problem that isn't hurting yet. Separately, `vite.config.ts` now excludes
+   jsPDF's unused `.html()`/`.addSvgAsImage()` dependencies (`html2canvas`,
+   `dompurify`, `canvg` — confirmed unused by this app, ~377KB) from the PWA's
+   eager precache list, so at least that part isn't downloaded on install for
+   nothing — that part's done.
 
 ## What's left to do
 

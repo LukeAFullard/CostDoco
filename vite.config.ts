@@ -19,7 +19,15 @@ export default defineConfig({
         // docs/implementation/00-foundation.md step 6) — precaching them at install
         // time would defeat that and bloat every user's first-load download.
         // Cache them on first use instead, offline-available from then on.
-        globIgnores: ['**/*.wasm'],
+        //
+        // html2canvas/dompurify/canvg are separate: they're jsPDF's optional
+        // dependencies for its .html()/.addSvgAsImage() methods, which this app
+        // never calls (only .addImage() and autoTable() are used, confirmed via
+        // jsPDF's own source — those two dynamic-import trios only exist inside
+        // the unused methods). Vite already splits them into their own chunks
+        // since jsPDF loads them via import(); excluding them here just stops
+        // precaching ~377KB of genuinely dead code on every install.
+        globIgnores: ['**/*.wasm', '**/html2canvas-*.js', '**/purify.es-*.js', '**/index.es-*.js'],
         runtimeCaching: [
           {
             urlPattern: /\.(?:wasm|traineddata(?:\.gz)?)$/,
