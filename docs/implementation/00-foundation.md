@@ -28,7 +28,7 @@
    - Confirm it installs and loads offline as an empty shell before moving on.
 
 6. **OCR/PDF pipeline spike (throwaway code, not shipped)**
-   - Install `@llamaindex/liteparse-wasm`. Run `npm view @llamaindex/liteparse-wasm versions` and pin the latest stable release ≥ `wasm-v2.8.1`, confirming via that release's notes that it includes the pure-Rust image→PDF conversion.
+   - Install `@llamaindex/liteparse-wasm`, pinned to `wasm-v2.14.0` (confirmed current as of 25 Aug 2026 — see `06-open-questions-resolved.md` §2 for the version-selection rationale), confirming via that release's notes that it includes the pure-Rust image→PDF conversion.
    - Install `tesseract.js`. Wire it as the `ocrEngine.recognize` callback liteparse-wasm expects.
    - Build a standalone test harness (a script or throwaway route — not part of the shipped app) that:
      - Runs image→PDF conversion on 15–20 real sample receipt photos (mix of clean and messy: thermal fade, skew, crumpled).

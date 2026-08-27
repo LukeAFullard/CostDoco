@@ -95,13 +95,13 @@ Receipts carry more sensitive data (partial card numbers, addresses) than notes 
 
 ## 7. Phased Roadmap
 
-- [ ] **Phase 0 — Foundation:** repo scaffold, shared tokens/components, IndexedDB schema, PWA shell, OCR feasibility spike. → `docs/implementation/00-foundation.md`
-- [ ] **Phase 1 — Capture & manual entry MVP:** groups, cost codes, capture/crop, full manual entry, no OCR yet. → `docs/implementation/01-data-model-and-manual-entry.md`
-- [ ] **Phase 2 — OCR & compression:** liteparse/tesseract pipeline, correction UI, compression preview, duplicate detection. → `docs/implementation/02-ocr-compression-pipeline.md`
-- [ ] **Phase 3 — Reporting & backup:** CSV export, PDF summary report, zip backup/restore, persistent storage, backup reminders. → `docs/implementation/03-reporting-export-backup.md`
-- [ ] **Phase 4 — Security:** encryption at rest, billable flag wiring. → `docs/implementation/04-security-and-bridge.md`
+- [x] **Phase 0 — Foundation:** repo scaffold, shared tokens/components, IndexedDB schema, PWA shell, OCR feasibility spike. → `docs/implementation/00-foundation.md`
+- [x] **Phase 1 — Capture & manual entry MVP:** groups, cost codes, capture/crop, full manual entry, no OCR yet. → `docs/implementation/01-data-model-and-manual-entry.md`
+- [x] **Phase 2 — OCR & compression:** liteparse/tesseract pipeline, correction UI, compression preview, duplicate detection. → `docs/implementation/02-ocr-compression-pipeline.md`
+- [x] **Phase 3 — Reporting & backup:** CSV export, PDF summary report, zip backup/restore, persistent storage, backup reminders. → `docs/implementation/03-reporting-export-backup.md`
+- [x] **Phase 4 — Security:** encryption at rest, billable flag wiring. → `docs/implementation/04-security-and-bridge.md`
 - [x] **Phase 5 — Stretch:** vendor memory and named export templates shipped; auto-crop/perspective correction and OCR-assisted line-item detection left open (see doc for reasons). → `docs/implementation/05-stretch-enhancements.md`
-- [ ] **Phase 6 — Open questions resolved:** hosting model, currency handling, custom fields, categorisation defaults, version pin. → `docs/implementation/06-open-questions-resolved.md`
+- [x] **Phase 6 — Open questions resolved:** hosting model, currency handling, custom fields, categorisation defaults, version pin. → `docs/implementation/06-open-questions-resolved.md`
 - [ ] **Phase 7 — Suite Bridge:** deliberately deferred until Phases 0–6 are stable and same-domain hosting is confirmed in production. Not yet scoped.
 
 ---
