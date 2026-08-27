@@ -1,0 +1,51 @@
+name: Deploy GitHub Pages preview
+
+# GitHub Pages preview only. Production is a same-origin subpath deploy
+# (timedoco.com/costs/ — see docs/implementation/06-open-questions-resolved.md
+# §1), handled separately by whatever serves that domain. This workflow just
+# builds the Vite app and publishes it to <owner>.github.io/<repo>/ so the
+# app can be previewed without waiting on that infra decision.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          # Overrides vite.config.ts's production default ('/costs/') to
+          # match a GitHub Pages project site's URL shape:
+          # https://<owner>.github.io/<repo>/
+          VITE_BASE_PATH: /CostDoco/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
